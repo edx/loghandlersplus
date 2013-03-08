@@ -8,7 +8,13 @@ import boto.sns
 class SQSHandler(logging.Handler):
     ''' A Python logging handler which sends messages to Amazon SQS. Note 
     that, in many cases, an SNSHandler, tied to SQS, is a better option. '''
-    def __init__(self, queue="pmitros_dev", aws_key=None, secret_key=None):
+    def __init__(self, queue="sqs_handler_debug", aws_key=None, secret_key=None):
+        ''' Sends log messages to SNS. Parameters: 
+        * queue is the SQS queue. This will be created if it does not exist. 
+        * Optional: aws_key and secret_key. If these don't exist, it will look 
+          at the appropriate environment variables. 
+        '''
+
         logging.Handler.__init__(self)
         if aws_key and secret_key:
             conn = SQSConnection(aws_key, secret_key)
