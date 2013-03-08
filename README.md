@@ -13,4 +13,5 @@ python setup.py install
 
 Note that the AWS loggers require boto. We explicitly do not include
 this in requirements.txt. As the list of services grows, we would
-prefer to only require packages installed for the ones we use.
+prefer to only require packages installed for the specific services
+used.
