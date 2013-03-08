@@ -1,5 +1,6 @@
 import logging
 import logging.handlers
+import exceptions
 
 import boto.sns
 
@@ -26,9 +27,9 @@ class SNSHandler(logging.Handler):
         try: 
             self.topic = [t for t in topics if t.split(':')[5] == topic][0]
         except: 
-            raise "Topic not found"
+            raise RuntimeError("Topic not found")
         if not self.topic:
-            raise "Topic not found"
+            raise RuntimeError("Topic not found")
         self.topic_name = topic
     
     def emit(self, record): 
