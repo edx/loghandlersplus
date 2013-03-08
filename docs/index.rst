@@ -13,8 +13,10 @@ Contents:
 
 .. automodule:: lambdahandler
 .. automodule:: sqshandler
+.. automodule:: snshandler
 .. autoclass:: lambdahandler.LambdaHandler
 .. autoclass:: sqshandler.SQSHandler
+.. autoclass:: snshandler.SNSHandler
 
 Indices and tables
 ==================

@@ -6,9 +6,9 @@ import boto.sns
 class SNSHandler(logging.Handler):
     ''' Python logging handler which publishes to Amazon AWS Simple 
     Notification Service. 
-
+    
     requires boto''' 
-   def __init__(self, topic="sns_handler_debug", aws_key=None, secret_key=None):
+    def __init__(self, topic="sns_handler_debug", aws_key=None, secret_key=None):
         ''' Sends log messages to SNS. Parameters: 
         * topic is the SNS topic. This must exist prior to initalization. 
         * Optional: aws_key and secret_key. If these don't exist, it will look 
@@ -19,7 +19,7 @@ class SNSHandler(logging.Handler):
             self.conn = boto.sns.SNSConnection(aws_key, secret_key)
         else:
             self.conn = boto.sns.SNSConnection()
-
+            
         topics = self.conn.get_all_topics()
         topics = topics["ListTopicsResponse"]["ListTopicsResult"]["Topics"]
         topics = [t['TopicArn'] for t in topics]
@@ -33,7 +33,7 @@ class SNSHandler(logging.Handler):
     
     def emit(self, record): 
         self.conn.publish(self.topic, record.msg)
-
+        
 if False: 
     logger = logging.getLogger('myapp')
     logger.addHandler(SNSHandler())
