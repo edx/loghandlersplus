@@ -19,7 +19,7 @@ class LambdaHandler(logging.Handler):
     def emit(self, record):
         self.f(record.msg)
 
-if False: 
+if __name__ == '__main__':
     ''' Debug/test code. ''' 
     def p(x):
         print x

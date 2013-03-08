@@ -27,7 +27,7 @@ class SQSHandler(logging.Handler):
         m.set_body(record.msg)
         self.q.write(m)
 
-if False: 
+if __name__ == '__main__':
     logger = logging.getLogger('myapp')
     logger.addHandler(SQSHandler())
     logger.error("AAAA")

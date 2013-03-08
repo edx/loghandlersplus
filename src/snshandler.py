@@ -35,7 +35,7 @@ class SNSHandler(logging.Handler):
     def emit(self, record): 
         self.conn.publish(self.topic, record.msg)
         
-if False: 
+if __name__ == '__main__':
     logger = logging.getLogger('myapp')
     logger.addHandler(SNSHandler())
     logger.error("AAAA")
