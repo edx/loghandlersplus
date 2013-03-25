@@ -13,7 +13,9 @@ Additional handlers for Python logging (Lambda, AWS SNS, AWS SQS).
   it won't take down your system. If a handler throws an exception,
   that exception is passed to a fallback handler. If a handler takes
   more than some period of time (e.g. http handler with the server
-  backlogged), that handler is taken out of the pool for a while.
+  backlogged), that handler is taken out of the pool for a while. This
+  uses threads. Throughput with threads is 680-4500 calls per second
+  on a T2400 (a laptop CPU from 2006).
 
 To install, run: 
 
