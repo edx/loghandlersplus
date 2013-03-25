@@ -105,94 +105,75 @@ class FallbackHandler(logging.Handler):
                     raise Exception(result[1])
                 
             except Exception, ex:
-                print ex
                 self.exception_handlers.emit(record)
-        
-            
         else:   # No working handlers to service request, print to console
             print record.getMessage()
             
     def __getattr__ (self, name):
+        ## Allows access to auxiliary methods/data in the main_handler
         return self.main_handler.name
 
 if __name__ == '__main__':
+    import time
     logger = logging.getLogger('myapp')
 
-    def f_mainhandlerok(x):
-        print "_test_mainhandlerok: " + x
+    handlers_called = []
 
-    def f_mainhandlerbad(x):
-        print "_test_mainhandlerbad: " + x
-       # print "_test_main_handlerbad: Raising DivideByZero Exception"
-        print 0/0 # Raise DivideByZero Exception
+    def verify(name, a):
+        global handlers_called
+        if handlers_called == a:
+            print name + " OKAY"
+            handlers_called = []
+        else:
+            raise Exception(name+" failed")
 
-    def f_mainhandlertimeout(x):
-        print "_test_mainhandlertimeout: " + x
-       # print "--- Long Loop --- "
-        for i in range(0, 10000000):
-            pass
+    def f_handlerok(name, x):
+        handlers_called.append("["+name+"]start ok: " + x)
+        handlers_called.append("["+name+"]finish ok: " + x)
 
-    def f_fallbackhandlerok(x):
-        print "_test_fallbackhandlerok: " + x
+    def f_handlerbad(name, x):
+        handlers_called.append("["+name+"]start rbad: " + x)
+        temp = 0/0 # Raise DivideByZero Exception
+        handlers_called.append("["+name+"]finish bad: " + x)
 
-    def f_fallbackhandlerbad(x):
-        print "_test_fallbackhanderbad: " + x
-       # print "_test_fallbackhanderbad: Raising DivideByZero Exception"
-        print 0/0
+    def f_handlertimeout(name, x):
+        handlers_called.append("["+name+"]start rtimeout: " + x)
+        time.sleep(1)
+        handlers_called.append("["+name+"]start rtimeout: " + x)
 
-    def f_fallbackhandlertimeout(x):
-        print "_test_fallbackhandlertimeout: " + x
-        #print "--- Long Loop --- "
-        for i in range(0, 10000000):
-            pass
-        
-    def f_defaulthandlerok(x):
-        print "_test_defaulthandlerok: " + x
+    mainhandlerok = LambdaHandler(lambda x: f_handlerok("main", x))
+    mainhandlerbad = LambdaHandler(lambda x: f_handlerbad("main", x))
+    mainhandlertimeout = LambdaHandler(lambda x: f_handlertimeout("main", x))
 
-    def f_defaulthandlerbad(x):
-        print "_test_defaulthandlerbad: " + x
-        print 0/0
+    fallbackhandlerok = LambdaHandler(lambda x: f_handlerok("fallback", x))
+    fallbackhandlerbad = LambdaHandler(lambda x: f_handlerbad("fallback", x))
+    fallbackhandlertimeout = LambdaHandler(lambda x: f_handlertimeout("fallback", x))
 
-    def f_defaulthandlertimeout(x):
-        print "_test_defaulthandlertimeout: " + x
-        for i in range(0, 10000000):
-            pass
+    defaulthandlerok = LambdaHandler(lambda x: f_handlerok("default", x))
+    defaulthandlerbad = LambdaHandler(lambda x: f_handlerbad("default", x))
+    defaulthandlertimeout = LambdaHandler(lambda x: f_handlertimeout("default", x))
 
-    def f_defaultexceptionhandler(x):
-        print "_test_defaultexceptionhandlerok: " + x
-    
-    _mainhandlerok = LambdaHandler(f_mainhandlerok)
-    _mainhandlerbad = LambdaHandler(f_mainhandlerbad)
-    _mainhandlertimeout = LambdaHandler(f_mainhandlertimeout)
-    _fallbackhandlerok = LambdaHandler(f_fallbackhandlerok)
-    _fallbackhandlerbad = LambdaHandler(f_fallbackhandlerbad)
-    _fallbackhandlertimeout = LambdaHandler(f_fallbackhandlertimeout)
-    _defaulthandlerok = LambdaHandler(f_defaulthandlerok)
-    _defaulthandlerbad = LambdaHandler(f_defaulthandlerbad)
-    _defaulthandlertimeout = LambdaHandler(f_defaulthandlertimeout)
-    _defaultexceptionhandler = LambdaHandler(f_defaultexceptionhandler)
+    defaultexceptionhandler = LambdaHandler(lambda x: f_handlerok("exception", x))
 
-    print "_mainhandlerok: " + str(_mainhandlerok)
-    print "_fallbackhandlerok: " + str(_fallbackhandlerok)
-    print "_defaulthandlerok: " + str(_defaulthandlerok)
-
-    print
-    print "=== TEST 1: Main Handler OK ==="
-    test1handler = FallbackHandler(_mainhandlerok, fallback_handlers=[_fallbackhandlerok, _defaulthandlerok], exception_handlers=_defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    # Test case: Normal condition
+    test1handler = FallbackHandler(mainhandlerok, fallback_handlers=[fallbackhandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test1handler)
     logger.error("TEST 1")
     logger.removeHandler(test1handler)
+    verify("Main handler test", ['[main]start ok: TEST 1', '[main]finish ok: TEST 1'])
 
+    # Test case: Main handler throws an exception
     print
     print "=== TEST 2: Main Handler Bad ==="
-    test2handler = FallbackHandler(_mainhandlerbad, fallback_handlers=[_fallbackhandlerok, _defaulthandlerok], exception_handlers=_defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test2handler = FallbackHandler(mainhandlerbad, fallback_handlers=[fallbackhandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test2handler)
     logger.error("TEST 2")
     logger.removeHandler(test2handler)
 
+    # Test case: Main handler times out
     print
     print "=== TEST 3: Main Handler Timeout Fallback Handler OK ==="
-    test3handler = FallbackHandler(_mainhandlertimeout, fallback_handlers=[_fallbackhandlerok, _defaulthandlerok], exception_handlers=_defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=0.1)
+    test3handler = FallbackHandler(mainhandlertimeout, fallback_handlers=[fallbackhandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=0.1)
     logger.addHandler(test3handler)
     for i in range(0, 5):
         logger.error("TEST 3-" + str(i))
@@ -205,7 +186,7 @@ if __name__ == '__main__':
 
     print
     print "=== TEST 4: Main Handler Timeout Fallback Handler Bad ==="
-    test4handler = FallbackHandler(_mainhandlertimeout, fallback_handlers=[_fallbackhandlerbad, _defaulthandlerok], exception_handlers=_defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test4handler = FallbackHandler(mainhandlertimeout, fallback_handlers=[fallbackhandlerbad, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test4handler)
     for i in range(0, 5):
         logger.error("TEST 4-" + str(i))
@@ -213,7 +194,7 @@ if __name__ == '__main__':
 
     print
     print "=== TEST 5: Main Handler Timeout Fallback Handler Timeout Default Handler OK ==="
-    test5handler = FallbackHandler(_mainhandlertimeout, fallback_handlers=[_fallbackhandlertimeout, _defaulthandlerok], exception_handlers=_defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test5handler = FallbackHandler(mainhandlertimeout, fallback_handlers=[fallbackhandlertimeout, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test5handler)
     for i in range(0, 8):
         logger.error("TEST 5-" + str(i))
@@ -221,7 +202,7 @@ if __name__ == '__main__':
 
     print
     print "=== TEST 6: Main Handler Timeout Fallback Handler Timeout Default Handler Bad ==="
-    test6handler = FallbackHandler(_mainhandlertimeout, fallback_handlers=[_fallbackhandlertimeout, _defaulthandlerbad], exception_handlers=_defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test6handler = FallbackHandler(mainhandlertimeout, fallback_handlers=[fallbackhandlertimeout, defaulthandlerbad], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test6handler)
     for i in range(0, 8):
         logger.error("TEST 6-" + str(i))
@@ -229,7 +210,7 @@ if __name__ == '__main__':
 
     print
     print "=== TEST 7: Main Handler Timeout Fallback Handler Timeout Default Handler Timeout ==="
-    test7handler = FallbackHandler(_mainhandlertimeout, fallback_handlers=[_fallbackhandlertimeout, _defaulthandlertimeout], exception_handlers=_defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test7handler = FallbackHandler(mainhandlertimeout, fallback_handlers=[fallbackhandlertimeout, defaulthandlertimeout], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test7handler)
     for i in range(0, 10):
         logger.error("TEST 7-" + str(i))
@@ -237,7 +218,7 @@ if __name__ == '__main__':
 
     print
     print "=== TEST 8: Load testing ==="
-    test8handler = FallbackHandler(_mainhandlertimeout, fallback_handlers=[_fallbackhandlerok, _defaulthandlerok], exception_handlers=_defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test8handler = FallbackHandler(mainhandlertimeout, fallback_handlers=[fallbackhandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test8handler)
     import threading        
     class TestingThread(threading.Thread):
@@ -246,8 +227,14 @@ if __name__ == '__main__':
         def run (self):
             logger.error("TEST 8");
     it = None
-    for i in range(0, 1000):
+    t=time.time()
+    for i in range(0, 10000):
         it = TestingThread()
         it.start()
-    it.join()
+        it.join()
+    delta = time.time()-t
+    tps = 10000./delta
+    print delta, tps # Handles 680-4500 threads per second on a 7-year-old T2400
+    if tps < 600:
+        raise Exception("Performance not okay")
     logger.removeHandler(test8handler)
