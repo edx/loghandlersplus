@@ -235,3 +235,19 @@ if __name__ == '__main__':
         logger.error("TEST 7-" + str(i))
     logger.removeHandler(test7handler)
 
+    print
+    print "=== TEST 8: Load testing ==="
+    test8handler = FallbackHandler(_mainhandlertimeout, fallback_handlers=[_fallbackhandlerok, _defaulthandlerok], exception_handlers=_defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    logger.addHandler(test8handler)
+    import threading        
+    class TestingThread(threading.Thread):
+        def __init__ (self):
+            threading.Thread.__init__(self)
+        def run (self):
+            logger.error("TEST 8");
+    it = None
+    for i in range(0, 1000):
+        it = TestingThread()
+        it.start()
+    it.join()
+    logger.removeHandler(test8handler)
