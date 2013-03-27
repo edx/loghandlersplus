@@ -17,16 +17,24 @@ class FailsafeHandler(logging.Handler):
        out of main queue, and we start using failsafe_handlers instead. We retry main_handler
        after /retry_timeout/ seconds
     4. If at any point an exception is thrown, catch it using exception_handlers
+
+    Please note that Python does not give a way to kill threads. If
+    this code is completely ignored, threads may built up (e.g. at
+    attempts=3 and retry_timeout at 1 hour, you may accumulate up to
+    three threads per hour). 
     '''
     
     def __timeout (self, func, arg1, timeout_duration, it=None):
         ''' Calls func with argument arg1.
-        Returns a tuple with first element a boolean indicating whether the function timed out and the second element an exception string if it occurred.
+
+        Returns a tuple with first element a boolean indicating
+        whether the function timed out and the second element an
+        exception string if it occurred.
 
         Parameters:
             func: Function whose running time is to be monitered
             arg1: Argument to the function
-            timeout_duration: Time interval after which TimeoutError is raised
+            timeout_duration: Time interval after which request times out
             it: An InterruptableThread instance
         '''
         import threading        
@@ -48,20 +56,23 @@ class FailsafeHandler(logging.Handler):
             is_timeout = True
             it.join()
         
-        return (is_timeout, it.result)
+        if is_timeout:
+            return "Timeout"
+        if it.result:
+            return "Exception "+it.result
+        return "Success"
 
-    def __init__(self, main_handler, failsafe_handlers, exception_handlers, timeout, attempts, retry_timeout):
+    def __init__(self, main_handler, fallback_handlers, exception_handler, timeout, attempts, retry_timeout):
         '''Parameters
             main_handler: The main log handler
-            failsafe_handlers: List of failsafe handlers if main_handler times out
+            fallback_handlers: List of failsafe handlers if main_handler times out
             exception_handlers: Exception handler if main handler throws exception
             timeout: Timeout
             attempts: Number of attempts before the handler is taken out into recharge queue
             retry_timeout: Time interval after which handlers in recharge queue are tried again
         '''
         logging.Handler.__init__(self)
-        self.main_handler = main_handler
-        self.failsafe_handlers = failsafe_handlers
+        self.handlers = [main_handler] + fallback_handlers
         self.exception_handlers = exception_handlers
         self.timeout = timeout
         self.attempts = attempts
@@ -75,12 +86,36 @@ class FailsafeHandler(logging.Handler):
 
         Parameters: None 
         '''
-        self.__maintimeoutcount = 0
-        self.__queue = self.failsafe_handlers[::-1]
-        self.__queue.append(self.main_handler)
-        self.__rechargequeue = []
+        self.__timeouts = {}
+        for fh in [self.main_handler] + self.fallback_handlers:
+            self.__timeouts[fh] = { 'attempts' : 0, 
+                                    'active' : True }
 
     def emit(self, record):
+        for handler in self.handlers:
+            # If the current handler is active, try to call it. 
+            
+            # If the current handler was inactive, but is past the retry timeout, try it. 
+            # If it works, reset it. 
+            if self.__timeouts[handler]['active'] == False and \
+                    self.__timeouts[handler]['reset_time'] > datetime.now():
+                res = self.__timeout(handler, record, self.timeout)
+                if res == "Success":
+                    self.__reset_handler(handler)
+                    break
+                if res == "Timeout":
+                    self.__timeout_handler(handler)
+            
+            # If the current handler is inactive, go on to the next one
+            # If the current handler is active, try it. 
+            res = self.__timeout(handler, record, self.timeout)
+            if res == "Timeout":
+                self.__timeouts[handler].attempts = self.__timeouts[handler].attempts + 1
+                if self.__timeouts[handler].attempts >= self.attempts: 
+                    self.__timeout_handler(handler)
+                continue
+            break
+
         #print str(self.__queue)
         # Check to see if any handler is ready to be added to the main queue from recharge queue
         for rq in self.__rechargequeue[:]:
@@ -102,6 +137,7 @@ class FailsafeHandler(logging.Handler):
 
                 if result[0]: # Check timeout
                     self.__maintimeoutcount += 1
+                    ## TODO: Raise exception and re-emit event
 
                     if self.__maintimeoutcount >= self.attempts:
                         self.__rechargequeue.append([self.__queue.pop(), datetime.now()])
@@ -130,8 +166,10 @@ if __name__ == '__main__':
         global handlers_called
         if handlers_called == a:
             print name + " OKAY"
-            handlers_called = []
+            del handlers_called[:]
         else:
+            print "     Got: ", handlers_called
+            print "Expected: ", a
             raise Exception(name+" failed")
 
     def f_handlerok(name, x):
@@ -163,24 +201,26 @@ if __name__ == '__main__':
     defaultexceptionhandler = LambdaHandler(lambda x: f_handlerok("exception", x))
 
     # Test case: Normal condition
-    test1handler = FailsafeHandler(mainhandlerok, failsafe_handlers=[failsafehandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test1handler = FailsafeHandler(mainhandlerok, fallback_handlers=[failsafehandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test1handler)
     logger.error("TEST 1")
     logger.removeHandler(test1handler)
     verify("Main handler test", ['[main]start ok: TEST 1', '[main]finish ok: TEST 1'])
 
     # Test case: Main handler throws an exception
-    print
-    print "=== TEST 2: Main Handler Bad ==="
-    test2handler = FailsafeHandler(mainhandlerbad, failsafe_handlers=[failsafehandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test2handler = FailsafeHandler(mainhandlerbad, fallback_handlers=[failsafehandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test2handler)
     logger.error("TEST 2")
     logger.removeHandler(test2handler)
+    verify("Main handler throws an exception test", ['[main]start rbad: TEST 2', '[exception]start ok: TEST 2', '[exception]finish ok: TEST 2'])
+
 
     # Test case: Main handler times out
+    ## This test case fails. 
+    ## Failsafe handler is never called. 
     print
     print "=== TEST 3: Main Handler Timeout Failsafe Handler OK ==="
-    test3handler = FailsafeHandler(mainhandlertimeout, failsafe_handlers=[failsafehandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=0.1)
+    test3handler = FailsafeHandler(mainhandlertimeout, fallback_handlers=[failsafehandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=0.1)
     logger.addHandler(test3handler)
     for i in range(0, 5):
         logger.error("TEST 3-" + str(i))
@@ -190,42 +230,55 @@ if __name__ == '__main__':
     for i in range(5, 7):
         logger.error("TEST 3-" + str(i))
     logger.removeHandler(test3handler)
+    verify("Main handler times out test", [])
+# ['[main]start rtimeout: TEST 3-0', '[main]start rtimeout: TEST 3-0', '[main]start rtimeout: TEST 3-1', '[main]start rtimeout: TEST 3-1', '[main]start rtimeout: TEST 3-2', '[main]start rtimeout: TEST 3-2', '[failsafe]start ok: TEST 3-3', '[failsafe]finish ok: TEST 3-3', '[failsafe]start ok: TEST 3-4', '[failsafe]finish ok: TEST 3-4', '[main]start rtimeout: TEST 3-5', '[main]start rtimeout: TEST 3-5', '[main]start rtimeout: TEST 3-6', '[main]start rtimeout: TEST 3-6']
+
+    print handlers_called
+    handlers_called = []
 
     print
     print "=== TEST 4: Main Handler Timeout Failsafe Handler Bad ==="
-    test4handler = FailsafeHandler(mainhandlertimeout, failsafe_handlers=[failsafehandlerbad, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test4handler = FailsafeHandler(mainhandlertimeout, fallback_handlers=[failsafehandlerbad, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test4handler)
     for i in range(0, 5):
         logger.error("TEST 4-" + str(i))
     logger.removeHandler(test4handler)
+    print handlers_called
+    handlers_called = []
 
     print
     print "=== TEST 5: Main Handler Timeout Failsafe Handler Timeout Default Handler OK ==="
-    test5handler = FailsafeHandler(mainhandlertimeout, failsafe_handlers=[failsafehandlertimeout, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test5handler = FailsafeHandler(mainhandlertimeout, fallback_handlers=[failsafehandlertimeout, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test5handler)
     for i in range(0, 8):
         logger.error("TEST 5-" + str(i))
     logger.removeHandler(test5handler)
+    print handlers_called
+    handlers_called = []
 
     print
     print "=== TEST 6: Main Handler Timeout Failsafe Handler Timeout Default Handler Bad ==="
-    test6handler = FailsafeHandler(mainhandlertimeout, failsafe_handlers=[failsafehandlertimeout, defaulthandlerbad], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test6handler = FailsafeHandler(mainhandlertimeout, fallback_handlers=[failsafehandlertimeout, defaulthandlerbad], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test6handler)
     for i in range(0, 8):
         logger.error("TEST 6-" + str(i))
     logger.removeHandler(test6handler)
+    print handlers_called
+    handlers_called = []
 
     print
     print "=== TEST 7: Main Handler Timeout Failsafe Handler Timeout Default Handler Timeout ==="
-    test7handler = FailsafeHandler(mainhandlertimeout, failsafe_handlers=[failsafehandlertimeout, defaulthandlertimeout], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test7handler = FailsafeHandler(mainhandlertimeout, fallback_handlers=[failsafehandlertimeout, defaulthandlertimeout], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test7handler)
     for i in range(0, 10):
         logger.error("TEST 7-" + str(i))
     logger.removeHandler(test7handler)
+    print handlers_called
+    handlers_called = []
 
     print
     print "=== TEST 8: Load testing ==="
-    test8handler = FailsafeHandler(mainhandlertimeout, failsafe_handlers=[failsafehandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    test8handler = FailsafeHandler(mainhandlertimeout, fallback_handlers=[failsafehandlerok, defaulthandlerok], exception_handlers=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test8handler)
     import threading        
     class TestingThread(threading.Thread):
@@ -245,3 +298,4 @@ if __name__ == '__main__':
     if tps < 600:
         raise Exception("Performance not okay")
     logger.removeHandler(test8handler)
+    verify("Load test", ['[failsafe]start ok: TEST 8', '[failsafe]finish ok: TEST 8']*10000)
