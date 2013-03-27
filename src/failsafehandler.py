@@ -5,11 +5,18 @@ from lambdahandler import LambdaHandler
 
 
 class FailsafeHandler(logging.Handler):
-    '''FailsafeHandler acts as a wrapper around the main_handler so that if it fails we handle requests using the failsafe handlers.
-    Working: 1. Service requests using main_handler
-             2. If main_handler takes more than timeout seconds attempts times then it is taken out of main queue and start using failsafe_handlers
-             3. Readd the main_handler into the queue after retry_timeout seconds
-             4. If at any point an exception is thrown, catch it using exception_handlers
+    '''FailsafeHandler acts as a wrapper around another handler. It
+    guards against exceptions and timeouts. As a result, we can use
+    the HTTP, SNS, and SQS handlers without failures if the downstream
+    services are down.
+
+    Functionality: 
+    1. Service requests default to using main_handler
+    2. If main_handler takes more than /timeout/ seconds, it will be terminated. 
+    3. If it times out more than /attempts/ times, then it is taken
+       out of main queue, and we start using failsafe_handlers instead. We retry main_handler
+       after /retry_timeout/ seconds
+    4. If at any point an exception is thrown, catch it using exception_handlers
     '''
     
     def __timeout (self, func, arg1, timeout_duration, it=None):
