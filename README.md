@@ -9,7 +9,7 @@ Additional handlers for Python logging (Lambda, AWS SNS, AWS SQS).
   this writing, SQS will handle around 60 requests per second per
   thread, while SNS while handle around 30 (linear scaling confirmed
   up to 10 threads). 
-* Fallback handler is a way of wrapping a handler in such a way that
+* Failsafe handler is a way of wrapping a handler in such a way that
   it won't take down your system. If a handler throws an exception,
   that exception is passed to a fallback handler. If a handler takes
   more than some period of time (e.g. http handler with the server
