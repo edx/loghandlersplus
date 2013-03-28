@@ -132,9 +132,9 @@ class FailsafeHandler(logging.Handler):
             handled = True
             break
             
-    # def __getattr__ (self, name):
-    #     ## Allows access to auxiliary methods/data in the main_handler
-    #     return self.main_handler.name
+     def __getattr__ (self, name):
+         ## Allows access to auxiliary methods/data in the main_handler
+        return getattr(self.main_handler, name)
 
 if __name__ == '__main__':
     import time
@@ -244,47 +244,42 @@ if __name__ == '__main__':
         logger.error("TEST 4-" + str(i))
     logger.removeHandler(test4handler)
     time.sleep(1)
-    verify(['[main]start rtimeout: TEST 4-0', '[failsafe]start rbad: TEST 4-0', '[exception]start ok: TEST 4-0', '[exception]finish ok: TEST 4-0', '[main]start rtimeout: TEST 4-1', '[failsafe]start rbad: TEST 4-1', '[exception]start ok: TEST 4-1', '[exception]finish ok: TEST 4-1', '[main]start rtimeout: TEST 4-2', '[failsafe]start rbad: TEST 4-2', '[exception]start ok: TEST 4-2', '[exception]finish ok: TEST 4-2', '[failsafe]start rbad: TEST 4-3', '[exception]start ok: TEST 4-3', '[exception]finish ok: TEST 4-3', '[failsafe]start rbad: TEST 4-4', '[exception]start ok: TEST 4-4', '[exception]finish ok: TEST 4-4', '[main]finish rtimeout: TEST 4-0', '[main]finish rtimeout: TEST 4-1', '[main]finish rtimeout: TEST 4-2'])
+    verify("Main handler times out, fallback handler raises an exception", ['[main]start rtimeout: TEST 4-0', '[failsafe]start rbad: TEST 4-0', '[exception]start ok: TEST 4-0', '[exception]finish ok: TEST 4-0', '[main]start rtimeout: TEST 4-1', '[failsafe]start rbad: TEST 4-1', '[exception]start ok: TEST 4-1', '[exception]finish ok: TEST 4-1', '[main]start rtimeout: TEST 4-2', '[failsafe]start rbad: TEST 4-2', '[exception]start ok: TEST 4-2', '[exception]finish ok: TEST 4-2', '[failsafe]start rbad: TEST 4-3', '[exception]start ok: TEST 4-3', '[exception]finish ok: TEST 4-3', '[failsafe]start rbad: TEST 4-4', '[exception]start ok: TEST 4-4', '[exception]finish ok: TEST 4-4', '[main]finish rtimeout: TEST 4-0', '[main]finish rtimeout: TEST 4-1', '[main]finish rtimeout: TEST 4-2'])
 
-    print
-    print "=== TEST 5: Main Handler Timeout Failsafe Handler Timeout Default Handler OK ==="
     test5handler = FailsafeHandler(mainhandlertimeout, fallback_handlers=[failsafehandlertimeout, defaulthandlerok], exception_handler=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test5handler)
     for i in range(0, 8):
         logger.error("TEST 5-" + str(i))
     logger.removeHandler(test5handler)
     time.sleep(1)
-    print handlers_called
-    handlers_called = []
 
-    print
-    print "=== TEST 6: Main Handler Timeout Failsafe Handler Timeout Default Handler Bad ==="
+    # Note: I *think* the order should be maintained, but I have not
+    # verified for some of the tougher test whether threading issues
+    # might not change the order in which these return.  Test case
+    # failure might not imply code failure; might just be a test
+    # failure.
+    verify("Main handler and fallback handler both time out", ['[main]start rtimeout: TEST 5-0', '[failsafe]start rtimeout: TEST 5-0', '[default]start ok: TEST 5-0', '[default]finish ok: TEST 5-0', '[main]start rtimeout: TEST 5-1', '[failsafe]start rtimeout: TEST 5-1', '[default]start ok: TEST 5-1', '[default]finish ok: TEST 5-1', '[main]start rtimeout: TEST 5-2', '[failsafe]start rtimeout: TEST 5-2', '[default]start ok: TEST 5-2', '[default]finish ok: TEST 5-2', '[default]start ok: TEST 5-3', '[default]finish ok: TEST 5-3', '[default]start ok: TEST 5-4', '[default]finish ok: TEST 5-4', '[default]start ok: TEST 5-5', '[default]finish ok: TEST 5-5', '[default]start ok: TEST 5-6', '[default]finish ok: TEST 5-6', '[default]start ok: TEST 5-7', '[default]finish ok: TEST 5-7', '[main]finish rtimeout: TEST 5-0', '[failsafe]finish rtimeout: TEST 5-0', '[main]finish rtimeout: TEST 5-1', '[failsafe]finish rtimeout: TEST 5-1', '[main]finish rtimeout: TEST 5-2', '[failsafe]finish rtimeout: TEST 5-2'])
+
     test6handler = FailsafeHandler(mainhandlertimeout, fallback_handlers=[failsafehandlertimeout, defaulthandlerbad], exception_handler=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test6handler)
     for i in range(0, 8):
         logger.error("TEST 6-" + str(i))
     logger.removeHandler(test6handler)
     time.sleep(1)
-    print handlers_called
-    handlers_called = []
+    verify("Main handler and fallback handler both time out, and second fallback handler throws an exception", ['[main]start rtimeout: TEST 6-0', '[failsafe]start rtimeout: TEST 6-0', '[default]start rbad: TEST 6-0', '[exception]start ok: TEST 6-0', '[exception]finish ok: TEST 6-0', '[main]start rtimeout: TEST 6-1', '[failsafe]start rtimeout: TEST 6-1', '[default]start rbad: TEST 6-1', '[exception]start ok: TEST 6-1', '[exception]finish ok: TEST 6-1', '[main]start rtimeout: TEST 6-2', '[failsafe]start rtimeout: TEST 6-2', '[default]start rbad: TEST 6-2', '[exception]start ok: TEST 6-2', '[exception]finish ok: TEST 6-2', '[default]start rbad: TEST 6-3', '[exception]start ok: TEST 6-3', '[exception]finish ok: TEST 6-3', '[default]start rbad: TEST 6-4', '[exception]start ok: TEST 6-4', '[exception]finish ok: TEST 6-4', '[default]start rbad: TEST 6-5', '[exception]start ok: TEST 6-5', '[exception]finish ok: TEST 6-5', '[default]start rbad: TEST 6-6', '[exception]start ok: TEST 6-6', '[exception]finish ok: TEST 6-6', '[default]start rbad: TEST 6-7', '[exception]start ok: TEST 6-7', '[exception]finish ok: TEST 6-7', '[main]finish rtimeout: TEST 6-0', '[failsafe]finish rtimeout: TEST 6-0', '[main]finish rtimeout: TEST 6-1', '[failsafe]finish rtimeout: TEST 6-1', '[main]finish rtimeout: TEST 6-2', '[failsafe]finish rtimeout: TEST 6-2'])
 
-    print
-    print "=== TEST 7: Main Handler Timeout Failsafe Handler Timeout Default Handler Timeout ==="
     test7handler = FailsafeHandler(mainhandlertimeout, fallback_handlers=[failsafehandlertimeout, defaulthandlertimeout], exception_handler=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
     logger.addHandler(test7handler)
     for i in range(0, 10):
         logger.error("TEST 7-" + str(i))
     logger.removeHandler(test7handler)
-    time.sleep(0.2)
-    print handlers_called
-    handlers_called = []
+    time.sleep(1)
+    
+    verify("All handlers time out. This one is tricky, since this is never logged. Final fallback handler should log this.", ['[main]start rtimeout: TEST 7-0', '[failsafe]start rtimeout: TEST 7-0', '[default]start rtimeout: TEST 7-0', '[main]start rtimeout: TEST 7-1', '[failsafe]start rtimeout: TEST 7-1', '[default]start rtimeout: TEST 7-1', '[main]start rtimeout: TEST 7-2', '[failsafe]start rtimeout: TEST 7-2', '[default]start rtimeout: TEST 7-2', '[main]finish rtimeout: TEST 7-0', '[failsafe]finish rtimeout: TEST 7-0', '[default]finish rtimeout: TEST 7-0', '[main]finish rtimeout: TEST 7-1', '[failsafe]finish rtimeout: TEST 7-1', '[default]finish rtimeout: TEST 7-1', '[main]finish rtimeout: TEST 7-2', '[failsafe]finish rtimeout: TEST 7-2', '[default]finish rtimeout: TEST 7-2'])
 
-    sys.exit(-1)
+    test7handler = FailsafeHandler(mainhandlerok, fallback_handlers=[failsafehandlerok, defaulthandlerok], exception_handler=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
+    logger.addHandler(test7handler)
 
-    print
-    print "=== TEST 8: Load testing ==="
-    test8handler = FailsafeHandler(mainhandlertimeout, fallback_handlers=[failsafehandlerok, defaulthandlerok], exception_handler=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
-    logger.addHandler(test8handler)
     import threading        
     class TestingThread(threading.Thread):
         def __init__ (self):
@@ -299,8 +294,7 @@ if __name__ == '__main__':
         it.join()
     delta = time.time()-t
     tps = 10000./delta
-    print delta, tps # Handles 680-4500 threads per second on a 7-year-old T2400
     if tps < 600:
         raise Exception("Performance not okay")
-    logger.removeHandler(test8handler)
-    verify("Load test", ['[failsafe]start ok: TEST 8', '[failsafe]finish ok: TEST 8']*10000)
+    print "Ran 10000 threads in ", delta," for ", tps, " threads per second" # Handles 680-4500 threads per second on a 7-year-old T2400
+    verify("Load test okay", ['[main]start ok: TEST 8', '[main]finish ok: TEST 8']*10000)
