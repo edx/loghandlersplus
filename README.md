@@ -19,7 +19,7 @@ Additional handlers for Python logging (Lambda, AWS SNS, AWS SQS).
 
 To install, run: 
 
-python setup.py install
+    python setup.py install
 
 Note that the AWS handlers require boto. We explicitly do not include
 this in requirements.txt. As the list of services grows, we would
