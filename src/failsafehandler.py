@@ -101,7 +101,6 @@ class FailsafeHandler(logging.Handler):
     def emit(self, record):
         handled = False
         for handler in self.handlers:
-
             # If the current handler was inactive, but is past the retry timeout, try it. 
             # If it works, reset it. 
             if not self.__timeouts[handler]['active'] and \
@@ -116,7 +115,9 @@ class FailsafeHandler(logging.Handler):
                     continue
                 # exception
                 break
-            
+            elif self.__timeouts[handler]['attempts'] > 0 and self.__timeouts[handler]['reset_time'] < time.time(): 
+                self.__timeouts[handler]['attempts'] = 0
+
             # If the current handler is inactive, and it's not past
             # the timeout, go on to the next one
             if not self.__timeouts[handler]['active']:
@@ -126,6 +127,7 @@ class FailsafeHandler(logging.Handler):
             res = self.__timeout(handler.emit, record, self.timeout)
             if res == "Timeout":
                 self.__timeouts[handler]['attempts'] = self.__timeouts[handler]['attempts'] + 1
+                self.__timeouts[handler]['reset_time'] = time.time() + self.retry_timeout
                 if self.__timeouts[handler]['attempts'] >= self.attempts: 
                     self.__timeout_handler(handler)
                 continue
@@ -134,6 +136,8 @@ class FailsafeHandler(logging.Handler):
             
     def __getattr__ (self, name):
         ## Allows access to auxiliary methods/data in the main_handler
+        if name=="__timeouts":
+            return self.__timeouts
         return getattr(self.main_handler, name)
 
 if __name__ == '__main__':
@@ -169,6 +173,7 @@ if __name__ == '__main__':
     mainhandlerok = LambdaHandler(lambda x: f_handlerok("main", x))
     mainhandlerbad = LambdaHandler(lambda x: f_handlerbad("main", x))
     mainhandlertimeout = LambdaHandler(lambda x: f_handlertimeout("main", x))
+    mainhandlerusuallytimeout = LambdaHandler(lambda x: f_handlertimeout("main", x) if x!='okay' else f_handlerok("main", x))
 
     failsafehandlerok = LambdaHandler(lambda x: f_handlerok("failsafe", x))
     failsafehandlerbad = LambdaHandler(lambda x: f_handlerbad("failsafe", x))
@@ -179,6 +184,38 @@ if __name__ == '__main__':
     defaulthandlertimeout = LambdaHandler(lambda x: f_handlertimeout("default", x))
 
     defaultexceptionhandler = LambdaHandler(lambda x: f_handlerok("exception", x))
+
+    # Test case: Handler times out after 3 events. 
+    # We send 4, and confirm timeout. 
+    # Wait for reset
+    # Send 2
+    # Wait for reset
+    # Send 4 events. Confirm only fourth event times out. 
+    test0handler = FailsafeHandler(mainhandlerusuallytimeout, fallback_handlers=[failsafehandlerok, defaulthandlerok], exception_handler=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=0.9)
+    logger.addHandler(test0handler)
+    logger.error("TEST 1a")
+    logger.error("TEST 1b")
+    logger.error("TEST 1c")
+    logger.error("TEST 1d") # Dropped
+    time.sleep(1)
+    logger.error("okay")
+    logger.error("TEST 2a")
+    logger.error("TEST 2b")
+    time.sleep(1)
+    logger.error("okay")
+    logger.error("TEST 3a")
+    logger.error("TEST 3b")
+    logger.error("TEST 3c")
+    logger.error("TEST 3d") # Dropped
+    time.sleep(2)
+
+    logger.removeHandler(test0handler)
+    if set(handlers_called) == set(['[main]start rtimeout: TEST 1a', '[failsafe]start ok: TEST 1a', '[failsafe]finish ok: TEST 1a', '[main]start rtimeout: TEST 1b', '[failsafe]start ok: TEST 1b', '[failsafe]finish ok: TEST 1b', '[main]start rtimeout: TEST 1c', '[failsafe]start ok: TEST 1c', '[failsafe]finish ok: TEST 1c', '[failsafe]start ok: TEST 1d', '[failsafe]finish ok: TEST 1d', '[main]finish rtimeout: TEST 1a', '[main]finish rtimeout: TEST 1b', '[main]finish rtimeout: TEST 1c', '[main]start ok: okay', '[main]finish ok: okay', '[main]start rtimeout: TEST 2a', '[failsafe]start ok: TEST 2a', '[failsafe]finish ok: TEST 2a', '[main]start rtimeout: TEST 2b', '[failsafe]start ok: TEST 2b', '[failsafe]finish ok: TEST 2b', '[main]finish rtimeout: TEST 2a', '[main]finish rtimeout: TEST 2b', '[main]start ok: okay', '[main]finish ok: okay', '[main]start rtimeout: TEST 3a', '[failsafe]start ok: TEST 3a', '[failsafe]finish ok: TEST 3a', '[main]start rtimeout: TEST 3b', '[failsafe]start ok: TEST 3b', '[failsafe]finish ok: TEST 3b', '[main]start rtimeout: TEST 3c', '[failsafe]start ok: TEST 3c', '[failsafe]finish ok: TEST 3c', '[failsafe]start ok: TEST 3d', '[failsafe]finish ok: TEST 3d', '[main]finish rtimeout: TEST 3a', '[main]finish rtimeout: TEST 3b', '[main]finish rtimeout: TEST 3c']): 
+        print "Reset timeout okay"
+    else:
+        print handlers_called
+        raise Exception("Reset timeout fails")
+    del handlers_called[:]
 
     # Test case: Normal condition
     test1handler = FailsafeHandler(mainhandlerok, fallback_handlers=[failsafehandlerok, defaulthandlerok], exception_handler=defaultexceptionhandler, timeout=0.1, attempts=3, retry_timeout=60*60)
