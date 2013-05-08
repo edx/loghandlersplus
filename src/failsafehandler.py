@@ -132,8 +132,8 @@ class FailsafeHandler(logging.Handler):
             handled = True
             break
             
-     def __getattr__ (self, name):
-         ## Allows access to auxiliary methods/data in the main_handler
+    def __getattr__ (self, name):
+        ## Allows access to auxiliary methods/data in the main_handler
         return getattr(self.main_handler, name)
 
 if __name__ == '__main__':
