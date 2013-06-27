@@ -25,3 +25,9 @@ Note that the AWS handlers require boto. We explicitly do not include
 this in requirements.txt. As the list of services grows, we would
 prefer to only require packages installed for the specific services
 used.
+
+To give some context: The 30RPS/60RPS implies the latency is enough to 
+cause a slight but noticable hit to performance if this were used as a 
+back-end on a typical Django project with no further configuration 
+changes. Thelinear scaling suggests that increasing the number of 
+threads would bring performance back. 
